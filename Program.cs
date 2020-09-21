@@ -1,5 +1,9 @@
 ﻿using System;
+using System.Collections;
+using System.Collections.Generic;
+using System.Linq;
 using System.Threading.Tasks;
+using Newtonsoft.Json;
 using PuppeteerSharp;
 using PuppeteerSharp.Input;
 
@@ -34,33 +38,44 @@ namespace CraigslistPuppeteerExperiment
                 WaitUntil = new[] { WaitUntilNavigation.Networkidle0 }
             });
 
-            var results = await page.QuerySelectorAllAsync(".rows > li");
+            var resultNodes = await page.QuerySelectorAllAsync(".rows > *");
 
-            foreach (var result in results)
+            var searchResults = new List<SearchResult>();
+
+            foreach (var result in resultNodes)
             {
-                // title
-                var resultTitle = await result
+                var shouldStop = await result
+                    .EvaluateFunctionAsync<bool>("n => n.classList.contains('nearby')");
+
+                if (shouldStop)
+                {
+                    break;
+                }
+
+                var title = await result
                     .EvaluateFunctionAsync<string>(
                         "li => li.querySelector('.result-title').innerText");
-                
-                Console.WriteLine($"Title: {resultTitle}");
 
-                // date
-                var date = await result
+                var isValid = title.Contains("nintendo switch", StringComparison.OrdinalIgnoreCase);
+
+                if (!isValid)
+                {
+                    continue;
+                }
+
+                var searchResult = new SearchResult();
+
+                searchResult.Title = title;
+                
+                searchResult.Date = await result
                     .EvaluateFunctionAsync<string>(
                         "li => li.querySelector('.result-date').getAttribute('title')");
 
-                Console.WriteLine($"Date: {date}");
-
-                // $ amount
-                var price = await result
+                searchResult.Amount = await result
                     .EvaluateFunctionAsync<string>(
                         "li => li.querySelector('.result-price').innerText");
 
-                Console.WriteLine($"Price: {price}");
-
-                // location?
-                var location = await result
+                searchResult.Location = await result
                     .EvaluateFunctionAsync<string>(
                         @"li => {
                             var locationNode = li.querySelector('.result-hood');
@@ -69,10 +84,7 @@ namespace CraigslistPuppeteerExperiment
                                 : null;
                         }");
 
-                Console.WriteLine($"Location: {location}");
-
-                // href of the image
-                var imageSrc = await result
+                searchResult.ImageSrc = await result
                     .EvaluateFunctionAsync<string>(
                         @"li => {
                             var img = li.querySelector('.result-image img');
@@ -81,20 +93,39 @@ namespace CraigslistPuppeteerExperiment
                                 : null;
                         }");
 
-                Console.WriteLine($"Image SRC: {imageSrc}");
-
-                // url of the result
-                var resultUrl = await result
+                searchResult.ResultUrl = await result
                     .EvaluateFunctionAsync<string>(
                         "li => li.querySelector('.result-title').getAttribute('href')");
 
-                Console.WriteLine($"Result HREF: {resultUrl}");
-
-                Console.WriteLine();
+                searchResults.Add(searchResult);
             }
 
+            var serializedResults = JsonConvert.SerializeObject(searchResults, Formatting.Indented);
+
+            Console.WriteLine(serializedResults);
+            Console.WriteLine($"Total results: {searchResults.Count}");
+
+            var originalWidth = page.Viewport.Width;
+
+            await SetViewportWidth(page, 1920);
+
+            var screenshotOptions = new ScreenshotOptions
+            {
+                FullPage = true
+            };
+            await page.ScreenshotAsync("hello-puppeteer-gang.jpeg", screenshotOptions);
+
+            await SetViewportWidth(page, originalWidth);
 
             browser.Dispose();
+        }
+
+        private static async Task SetViewportWidth(Page page, int width)
+        {
+            await page.SetViewportAsync(new ViewPortOptions
+            {
+                Width = width
+            });
         }
     }
 }
