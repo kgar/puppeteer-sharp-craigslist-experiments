@@ -38,67 +38,54 @@ namespace CraigslistPuppeteerExperiment
                 WaitUntil = new[] { WaitUntilNavigation.Networkidle0 }
             });
 
-            var resultNodes = await page.QuerySelectorAllAsync(".rows > *");
+            var searchResults = await page.EvaluateExpressionAsync<List<SearchResult>>(@"
+                (function () {
+                  let resultNodes = document.querySelectorAll('.rows > *');
+                  let searchResults = [];
 
-            var searchResults = new List<SearchResult>();
+                  for (let i = 0; i < resultNodes.length; i++) {
+                    let node = resultNodes[i];
 
-            foreach (var result in resultNodes)
-            {
-                var shouldStop = await result
-                    .EvaluateFunctionAsync<bool>("n => n.classList.contains('nearby')");
+                    let shouldStop = node.classList.contains('nearby');
+                    if (shouldStop) {
+                      break;
+                    }
 
-                if (shouldStop)
-                {
-                    break;
-                }
+                    let title = node.querySelector('.result-title').innerText;
 
-                var title = await result
-                    .EvaluateFunctionAsync<string>(
-                        "li => li.querySelector('.result-title').innerText");
+                    let isValid = title.toLowerCase().indexOf('nintendo switch') >= 0;
+                    if (!isValid) {
+                      continue;
+                    }
 
-                var isValid = title.Contains("nintendo switch", StringComparison.OrdinalIgnoreCase);
+                    let date = node.querySelector('.result-date').getAttribute('title');
+                    let amount = node.querySelector('.result-price').innerText;
 
-                if (!isValid)
-                {
-                    continue;
-                }
+                    let locationNode = node.querySelector('.result-hood');
+                    let location = locationNode !== null ? locationNode.innerText : null;
 
-                var searchResult = new SearchResult();
+                    let imgNode = node.querySelector('.result-image img');
+                    let imageSrc = imgNode !== null ? imgNode.getAttribute('src') : null;
 
-                searchResult.Title = title;
-                
-                searchResult.Date = await result
-                    .EvaluateFunctionAsync<string>(
-                        "li => li.querySelector('.result-date').getAttribute('title')");
+                    let resultUrl = node.querySelector('.result-title').getAttribute('href');
 
-                searchResult.Amount = await result
-                    .EvaluateFunctionAsync<string>(
-                        "li => li.querySelector('.result-price').innerText");
+                    let searchResult = {
+                      title: title,
+                      date: date,
+                      amount: amount,
+                      location: location,
+                      imageSrc: imageSrc,
+                      resultUrl: resultUrl,
+                      newFieldHere: 'Sabotage!'
+                    };
 
-                searchResult.Location = await result
-                    .EvaluateFunctionAsync<string>(
-                        @"li => {
-                            var locationNode = li.querySelector('.result-hood');
-                            return locationNode !== null 
-                                ? locationNode.innerText 
-                                : null;
-                        }");
+                    searchResults.push(searchResult);
+                  }
 
-                searchResult.ImageSrc = await result
-                    .EvaluateFunctionAsync<string>(
-                        @"li => {
-                            var img = li.querySelector('.result-image img');
-                            return img !== null
-                                ? img.getAttribute('src')
-                                : null;
-                        }");
+                  return searchResults;
+                })();
 
-                searchResult.ResultUrl = await result
-                    .EvaluateFunctionAsync<string>(
-                        "li => li.querySelector('.result-title').getAttribute('href')");
-
-                searchResults.Add(searchResult);
-            }
+            ");
 
             var serializedResults = JsonConvert.SerializeObject(searchResults, Formatting.Indented);
 

@@ -12,5 +12,6 @@ namespace CraigslistPuppeteerExperiment
         public string Location { get; set; }
         public string ImageSrc { get; set; }
         public string ResultUrl { get; set; }
+        public string NewFieldHere { get; set; }
     }
 }
